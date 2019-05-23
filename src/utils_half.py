@@ -5,7 +5,7 @@ from __future__ import print_function
 import sys
 import numpy as np
 import tensorflow as tf
-import gradients_impl
+
 
 user_flags = []
 
@@ -114,14 +114,21 @@ def get_train_ops(
     clip_mode: "global", "norm", or None.
     moving_average: store the moving average of parameters
   """
-  print(loss)
+  new_tf_variables=[]
+  half_tf_variables=[]
+  for var in tf_variables:
+      if var.dtype == 'float16_ref':
+          var = tf.to_float(var)
+          half_tf_variables.append(var)
+      new_tf_variables.append(var)
   if l2_reg > 0:
     l2_losses = []
-    for var in tf_variables:
-      l2_losses.append(tf.reduce_sum(var ** 2))
+    for var in new_tf_variables:
+        l2_losses.append(tf.reduce_sum(var ** 2))
     l2_loss = tf.add_n(l2_losses)
     loss += l2_reg * l2_loss
-  grads = gradients_impl.gradients(loss, tf_variables)
+
+  grads = tf.gradients(loss, new_tf_variables)
   grad_norm = tf.global_norm(grads)
 
   grad_norms = {}
@@ -233,10 +240,16 @@ def get_train_ops(
     opt = tf.contrib.opt.MovingAverageOptimizer(
       opt, average_decay=moving_average)
 
+  new_grads = []
+  for v, g in zip(tf_variables, grads):
+      if v.dtype == 'float16_ref':
+          g = tf.saturate_cast(g, dtype=tf.half)
+      new_grads.append(g)
+  grads = new_grads
+
   train_op = opt.apply_gradients(
     zip(grads, tf_variables), global_step=train_step)
-  print('!!!!!!!!!!!!!!!!!!!!!!!')
-  print(train_op)
+
   if get_grad_norms:
     return train_op, learning_rate, grad_norm, opt, grad_norms
   else:
