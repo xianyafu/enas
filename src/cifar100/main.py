@@ -363,7 +363,7 @@ def train():
   g = tf.Graph()
   g.as_default()
   controller_model = get_controller()
-  for class_index in range(0, 10):
+  for class_index in range(0, 1):
       print("!!!!!!!!!!!!!!!!!!")
       print("for ",(class_index+1)*10, " class of cifar100")
       ops = get_ops_v2(images[class_index], labels[class_index], controller_model, class_index+1)
@@ -386,7 +386,7 @@ def train():
       print("-" * 80)
       print("Starting session")
       config = tf.ConfigProto(allow_soft_placement=True)
-      with tf.train.SingularMonitoredSession(
+      with SingularMonitoredSession(
         config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
           #with tf.device('/gpu:1'):
           #sess.run(tf.global_variables_initializer())
@@ -508,19 +508,195 @@ def train():
                   print("-------------pred---------------")
                   print(pred.shape)
                   pred.sort(axis=0)
-                  tmp = np.zeros()
-                  small_20 = pred[20:]
+                  tmp = np.zeros(128)
+                  for i in range(0, 128):
+                      tmp[i]=pred[i][0]
+                  tmp.sort(axis=0)
+                  small_20 = tmp[20:]
                   print(small_20[0])
                   for j in range(0, batch_size):
-                      if pred[j]
-                  images_i.append(images[class_index]["train"][index*128])
+                      if np.max(pred[j]) in small_20:
+                         images_i.append(images[class_index]["train"][index*128+j])
+                         label_i.append(labels[class_index]["train"][index*128+j])
+              images[class_index+1] = np.concatenate(images_i, images[class_index])
+              labels[class_index+1] = np.concatenate(labels_i, labels[class_index])
             '''
 
-            if epoch >= 40*(1+class_index):#FLAGS.num_epochs:
+            if epoch >= 1*(1+class_index):#FLAGS.num_epochs:
               break
           #coord.request_stop()
           #coord.join(threads)
+      tf.reset_default_graph()
+def train_incre(index):
+  if FLAGS.child_fixed_arc is None:
+    images, labels = read_data_by_order(FLAGS.data_path)
+  else:
+    images, labels = read_data_by_order(FLAGS.data_path, num_valids=0)
 
+  g = tf.Graph()
+  g.as_default()
+  controller_model = get_controller()
+  for class_index in range(index, index+1):
+      print("!!!!!!!!!!!!!!!!!!")
+      print("for ",(class_index+1)*10, " class of cifar100")
+      ops = get_ops_v2(images[class_index], labels[class_index], controller_model, class_index+1)
+      child_ops = ops["child"]
+      controller_ops = ops["controller"]
+      
+      saver = tf.train.Saver(max_to_keep=2)
+      checkpoint_saver_hook = tf.train.CheckpointSaverHook(
+        FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
+ 
+      hooks = [checkpoint_saver_hook]
+      
+      if FLAGS.child_sync_replicas:
+        sync_replicas_hook = child_ops["optimizer"].make_session_run_hook(True)
+        hooks.append(sync_replicas_hook)
+      if FLAGS.controller_training and FLAGS.controller_sync_replicas:
+        sync_replicas_hook = controller_ops["optimizer"].make_session_run_hook(True)
+        hooks.append(sync_replicas_hook)
+      
+      print("-" * 80)
+      print("Starting session")
+      config = tf.ConfigProto(allow_soft_placement=True)
+      with SingularMonitoredSession(
+        config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
+          variables = tf.contrib.framework.get_variables_to_restore()
+          variables_to_restore = [v for v in variables if v.name.split('/')[0] == 'controller']
+          saver1 = tf.train.Saver(variables_to_restore)
+          saver.restore(sess, tf.train.latest_checkpoint('/home/fuxianya/github/enas/outputs/') )
+          start_time = time.time()
+          while True:
+            run_ops = [
+              child_ops["loss"],
+              child_ops["lr"],
+              child_ops["grad_norm"],
+              child_ops["train_acc"],
+              child_ops["train_op"],
+              child_ops["model_size"],
+              child_ops["infer_time"],
+            ]
+            loss, lr, gn, tr_acc, _, ms, intm = sess.run(run_ops)
+            global_step = sess.run(child_ops["global_step"])
+ 
+            if FLAGS.child_sync_replicas:
+              actual_step = global_step * FLAGS.num_aggregate
+            else:
+              actual_step = global_step
+            epoch = actual_step // ops["num_train_batches"]
+            curr_time = time.time()
+            if global_step % FLAGS.log_every == 0:
+              log_string = ""
+              log_string += "epoch={:<6d}".format(epoch)
+              log_string += "ch_step={:<6d}".format(global_step)
+              log_string += " loss={:<8.6f}".format(loss)
+              log_string += " lr={:<8.4f}".format(lr)
+              log_string += " |g|={:<8.4f}".format(gn)
+              log_string += " tr_acc={:<3d}/{:>3d}".format(
+                  tr_acc, FLAGS.batch_size)
+              log_string += " mins={:<10.2f}".format(
+                  float(curr_time - start_time) / 60)
+              log_string += " mem= "+str(ms)
+              log_string += " infer_time="+str(intm)
+              print(log_string)
+              
+            if actual_step % ops["eval_every"] == 0:
+              if (FLAGS.controller_training and
+                  epoch % FLAGS.controller_train_every == 0):
+                print("Epoch {}: Training controller".format(epoch))
+                for ct_step in range(FLAGS.controller_train_steps *
+                                      FLAGS.controller_num_aggregate):
+                  run_ops = [
+                    controller_ops["loss"],
+                    controller_ops["entropy"],
+                    controller_ops["lr"],
+                    controller_ops["grad_norm"],
+                    controller_ops["valid_acc"],
+                    controller_ops["baseline"],
+                    controller_ops["skip_rate"],
+                    controller_ops["train_op"],
+                    controller_ops["arc_mem"],
+                    controller_ops["in_time"],
+                  ]
+                  loss, entropy, lr, gn, val_acc, bl, skip, _,mem, intm = sess.run(run_ops)
+                  controller_step = sess.run(controller_ops["train_step"])
+ 
+                  if ct_step % FLAGS.log_every == 0:
+                    curr_time = time.time()
+                    log_string = ""
+                    log_string += "ctrl_step={:<6d}".format(controller_step)
+                    log_string += " loss={:<7.3f}".format(loss)
+                    log_string += " ent={:<5.2f}".format(entropy)
+                    log_string += " lr={:<6.4f}".format(lr)
+                    log_string += " |g|={:<8.4f}".format(gn)
+                    log_string += " acc={:<6.4f}".format(val_acc)
+                    log_string += " bl={:<5.2f}".format(bl)
+                    log_string += " mins={:<.2f}".format(
+                        float(curr_time - start_time) / 60)
+                    log_string += " mem_c= "+str(mem)
+                    log_string += " infer_time= "+str(intm)
+                    print(log_string)
+ 
+                print("Here are 10 architectures")
+                for _ in range(10):
+                  arc, acc, arc_mem,intm = sess.run([
+                    controller_ops["sample_arc"],
+                    controller_ops["valid_acc"],
+                    controller_ops["arc_mem"],
+                    controller_ops["in_time"],
+                  ])
+                  if FLAGS.search_for == "micro":
+                    normal_arc, reduce_arc = arc
+                    print(np.reshape(normal_arc, [-1]))
+                    print(np.reshape(reduce_arc, [-1]))
+                  else:
+                    start = 0
+                    for layer_id in range(FLAGS.child_num_layers):
+                      if FLAGS.controller_search_whole_channels:
+                        end = start + 1 + layer_id
+                      else:
+                        end = start + 2 * FLAGS.child_num_branches + layer_id
+                      print(np.reshape(arc[start: end], [-1]))
+                      start = end
+                  print("val_acc={:<6.4f}".format(acc))
+                  print("arc_mem="+str(arc_mem))
+                  print("infer_time="+str(intm))
+                  print("-" * 80)
+ 
+              print("Epoch {}: Eval".format(epoch))
+              if FLAGS.child_fixed_arc is None:
+                ops["eval_func"](sess, "valid")
+              start_time = time.time()
+              ops["eval_func"](sess, "test")
+              curr_time = time.time()
+              print(float(curr_time-start_time))
+            '''
+            if epoch == FLAGS.num_epochs:
+              images_i, labels_i = [],[]
+              for index in range(0,25):
+                  pred = sess.run(child_ops["pred"])
+                  print("-------------pred---------------")
+                  print(pred.shape)
+                  pred.sort(axis=0)
+                  tmp = np.zeros(128)
+                  for i in range(0, 128):
+                      tmp[i]=pred[i][0]
+                  tmp.sort(axis=0)
+                  small_20 = tmp[20:]
+                  print(small_20[0])
+                  for j in range(0, batch_size):
+                      if np.max(pred[j]) in small_20:
+                         images_i.append(images[class_index]["train"][index*128+j])
+                         label_i.append(labels[class_index]["train"][index*128+j])
+              images[class_index+1] = np.concatenate(images_i, images[class_index])
+              labels[class_index+1] = np.concatenate(labels_i, labels[class_index])
+            '''
+
+            if epoch >= 1*(1+class_index):#FLAGS.num_epochs:
+              break
+          #coord.request_stop()
+          #coord.join(threads)
+      tf.reset_default_graph()
 
 def main(_):
   print("-" * 80)
@@ -539,6 +715,8 @@ def main(_):
 
   utils.print_user_flags()
   train()
+  for i in range(1, 10):
+          train_incre(i)
 
 
 if __name__ == "__main__":
