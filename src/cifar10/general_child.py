@@ -963,11 +963,8 @@ class GeneralChild(Model):
     print("-" * 80)
     print("Build train graph")
     logits = self._model(self.x_train, is_training=True)
-    print(logits.shape)
-    print(self.y_train.shape)
     log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=self.y_train)
-    print(log_probs.shape)
     self.loss = tf.reduce_mean(log_probs)
 
     self.train_preds = tf.argmax(logits, axis=1)

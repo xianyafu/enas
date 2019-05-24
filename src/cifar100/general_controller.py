@@ -268,9 +268,11 @@ class GeneralController(Controller):
     self.skip_penaltys = tf.reduce_mean(skip_penaltys)
 
   def build_trainer(self, child_model):
+   with tf.variable_scope("", reuse=tf.AUTO_REUSE):
     child_model.build_valid_rl()
     self.valid_acc = (tf.to_float(child_model.valid_shuffle_acc) /
                       tf.to_float(child_model.batch_size))
+
     self.arc_mem = child_model.model_size
     self.mem = tf.reduce_sum((tf.to_float(child_model.model_size)/
                 tf.to_float(tf.constant(1500000))))
@@ -288,7 +290,10 @@ class GeneralController(Controller):
       self.reward += self.entropy_weight * self.sample_entropy
 
     self.sample_log_prob = tf.reduce_sum(self.sample_log_prob)
-    self.baseline = tf.Variable(0.0, dtype=tf.float32, trainable=False)
+    with tf.variable_scope("baseline", reuse=tf.AUTO_REUSE):
+      #self.baseline = tf.Variable(0.0, dtype=tf.float32, trainable=False)
+      self.baseline = tf.get_variable("baseline", shape=[], dtype=tf.float32,
+                      initializer=tf.constant_initializer(0))
     baseline_update = tf.assign_sub(
       self.baseline, (1 - self.bl_dec) * (self.baseline - self.reward))
 
@@ -298,9 +303,11 @@ class GeneralController(Controller):
     self.loss = self.sample_log_prob * (self.reward - self.baseline)
     if self.skip_weight is not None:
       self.loss += self.skip_weight * self.skip_penaltys
-
-    self.train_step = tf.Variable(
-        0, dtype=tf.int32, trainable=False, name="train_step")
+    with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+      self.train_step = tf.get_variable(shape=[], dtype=tf.int32,trainable=False,
+                         name="train_step", initializer = tf.constant_initializer(0))
+    #self.train_step = tf.Variable(
+    #    0, dtype=tf.int32, trainable=False, name="train_step")
     tf_variables = [var
         for var in tf.trainable_variables() if var.name.startswith(self.name)]
     print("-" * 80)

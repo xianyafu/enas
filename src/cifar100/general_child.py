@@ -196,10 +196,12 @@ class GeneralChild(Model):
 
   def _model(self, images, is_training, reuse=False):
     with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-      self.model_size = tf.Variable(tf.constant(0, dtype=tf.float32))
-                        #tf.get_variable("model_size", shape=[1], dtype=tf.float32,
-                        #              initializer=tf.zeros_initializer)
-      self.infer_time = tf.Variable(tf.constant(0, dtype=tf.float32))
+      self.model_size =tf.get_variable("model_size", shape=[], dtype=tf.float32,
+                                      initializer=tf.constant_initializer(0))
+      #tf.Variable(tf.constant(0, dtype=tf.float32))
+      self.infer_time =  tf.get_variable("inference_time", shape=[], dtype=tf.float32,
+                                      initializer=tf.constant_initializer(0))
+      #tf.Variable(tf.constant(0, dtype=tf.float32))
     with tf.variable_scope(self.name, reuse=reuse):
       layers = []
 
@@ -263,9 +265,12 @@ class GeneralChild(Model):
           inp_c = x.get_shape()[1].value
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
-        w = create_weight("w", [inp_c, self.class_num])
+        for i in range(1, 11):
+                create_weight('w'+str(i*10), [inp_c, i*10])
+        w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
         self.model_size = tf.add(self.model_size, tf.constant(32*inp_c*self.class_num, dtype=tf.float32))
         x = tf.matmul(x, w)
+        self.pred = tf.nn.softmax(x)
     return x
 
   def _enas_layer(self, layer_id, prev_layers, start_idx, out_filters, is_training, model_size, infer_time):
@@ -963,12 +968,9 @@ class GeneralChild(Model):
   def _build_train(self):
     print("-" * 80)
     print("Build train graph")
-    logits = self._model(self.x_train, is_training=True)
-    print(logits.shape)
-    print(self.y_train.shape)
+    logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
     log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=self.y_train)
-    print(log_probs.shape)
     self.loss = tf.reduce_mean(log_probs)
 
     self.train_preds = tf.argmax(logits, axis=1)
@@ -981,30 +983,30 @@ class GeneralChild(Model):
         for var in tf.trainable_variables() if var.name.startswith(self.name)]
     self.num_vars = count_model_params(tf_variables)
     print("Model has {} params".format(self.num_vars))
-
-    self.global_step = tf.Variable(
-      0, dtype=tf.int32, trainable=False, name="global_step")
-    self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
-      self.loss,
-      tf_variables,
-      self.global_step,
-      clip_mode=self.clip_mode,
-      grad_bound=self.grad_bound,
-      l2_reg=self.l2_reg,
-      lr_init=self.lr_init,
-      lr_dec_start=self.lr_dec_start,
-      lr_dec_every=self.lr_dec_every,
-      lr_dec_rate=self.lr_dec_rate,
-      lr_cosine=self.lr_cosine,
-      lr_max=self.lr_max,
-      lr_min=self.lr_min,
-      lr_T_0=self.lr_T_0,
-      lr_T_mul=self.lr_T_mul,
-      num_train_batches=self.num_train_batches,
-      optim_algo=self.optim_algo,
-      sync_replicas=self.sync_replicas,
-      num_aggregate=self.num_aggregate,
-      num_replicas=self.num_replicas)
+    with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+      self.global_step = tf.get_variable(shape=[], dtype=tf.int32,trainable=False,
+                         name="global_step", initializer = tf.constant_initializer(0))
+      self.train_op, self.lr, self.grad_norm, self.optimizer = get_train_ops(
+        self.loss,
+        tf_variables,
+        self.global_step,
+        clip_mode=self.clip_mode,
+        grad_bound=self.grad_bound,
+        l2_reg=self.l2_reg,
+        lr_init=self.lr_init,
+        lr_dec_start=self.lr_dec_start,
+        lr_dec_every=self.lr_dec_every,
+        lr_dec_rate=self.lr_dec_rate,
+        lr_cosine=self.lr_cosine,
+        lr_max=self.lr_max,
+        lr_min=self.lr_min,
+        lr_T_0=self.lr_T_0,
+        lr_T_mul=self.lr_T_mul,
+        num_train_batches=self.num_train_batches,
+        optim_algo=self.optim_algo,
+        sync_replicas=self.sync_replicas,
+        num_aggregate=self.num_aggregate,
+        num_replicas=self.num_replicas)
 
   # override
   def _build_valid(self):

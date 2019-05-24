@@ -3,7 +3,7 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 import sys
-sys.path.append(r'/home/BH/sy1706331/NAS/qint_enas/enas/src/cifar10')
+sys.path.append(r'/home/fuxianya/github/enas/src/cifar')
 import quantize
 import fold_batch_norms
 def _create_graph(input_graph=None,
