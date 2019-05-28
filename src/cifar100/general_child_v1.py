@@ -1009,18 +1009,35 @@ class GeneralChildV1(Model):
       self.x_train_v1 = tf.map_fn(_pre_process, x_train_v1, back_prop=False)
       self.y_train_v1 = y_train_v1
 
-    logits_v1 = self._model(self.x_train_v1, is_training=True, reuse=tf.AUTO_REUSE)
     logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
+    logits_v1 = self._model(self.x_train_v1, is_training=False, reuse=True)
 
-    log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      logits=logits, labels=self.y_train)
-    log_probs_v1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      logits=logits_v1, labels=self.y_train_v1)
-    log_probs = tf.expand_dims(log_probs, 1)
-    log_probs_v1 = tf.expand_dims(log_probs_v1, 1)
-    print(log_probs.shape)
-    print(log_probs_v1.shape)
+    #log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    #  logits=logits, labels=self.y_train)
+    #log_probs_v1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    #  logits=logits_v1, labels=self.y_train_v1)
+    order = np.arange(10*10)
+    old_class = (order[range(self.class_num-10)]).astype(np.int32)
+    new_class = (order[range(self.class_num-10, self.class_num)]).astype(np.int32)
+    scores = tf.concat(logits, 0)
+    scores_stored = tf.concat(logits_v1, 0)
+    pred_old_cl = tf.stack([scores_stored[:,i] for i in old_class], axis=1)
+    pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
+    label_old_classes = tf.stack([tf.one_hot(self.y_train_v1,100)[:,i] for i in old_class], axis=1)
+    label_new_classes = tf.stack([tf.one_hot(self.y_train, 100)[:,i] for i in new_class], axis=1)
+    log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
+      logits=pred_new_cl, labels=label_new_classes)
+    log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
+      logits=pred_old_cl, labels=label_old_classes)
+
+
+    #log_probs = tf.expand_dims(log_probs, 1)
+    #log_probs_v1 = tf.expand_dims(log_probs_v1, 1)
+    #print(log_probs.shape)
+    #print(log_probs_v1.shape)
+    #print(tf.reduce_mean(log_probs).shape)
     self.loss = tf.reduce_mean(tf.concat([log_probs, log_probs_v1],axis=1))
+    #print(self.loss.shape)
     #self.loss = tf.reduce_mean(log_probs)
 
     self.train_preds = tf.argmax(logits, axis=1)

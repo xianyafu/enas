@@ -604,7 +604,6 @@ def train(images, labels):
                       tmp[i]=pred[i][0]
                   tmp.sort(axis=0)
                   small_20 = tmp[20]
-                  print(small_20)
                   m = 0
                   for j in range(0, FLAGS.batch_size):
                       if pred[j][0] <= small_20 and m<20:
@@ -655,7 +654,7 @@ def train_incre(index, images, labels, images_i, labels_i):
           variables = tf.contrib.framework.get_variables_to_restore()
           variables_to_restore = [v for v in variables if v.name.split('/')[0] == 'controller']
           saver1 = tf.train.Saver(variables_to_restore)
-          saver.restore(sess, tf.train.latest_checkpoint('/home/BH/sy1706331/github/enas/outputs/') )
+          saver.restore(sess, tf.train.latest_checkpoint('/home/fuxianya/github/enas/outputs/') )
           start_time = time.time()
           while True:
             run_ops = [
@@ -767,7 +766,6 @@ def train_incre(index, images, labels, images_i, labels_i):
               for index in range(0,25):
                   x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
                   pred.sort(axis=0)
-                  print(pred)
                   tmp = np.zeros(FLAGS.batch_size)
                   for i in range(0, FLAGS.batch_size):
                       tmp[i]=pred[i][0]
@@ -780,7 +778,6 @@ def train_incre(index, images, labels, images_i, labels_i):
                          labels_i[num] = y_train[j]
                          num += 1
                          m += 1
-                  print('m: ',m)
               print('num: ',num)
 
             if epoch >= FLAGS.num_epochs*(1+class_index):#100*(1+class_index):#FLAGS.num_epochs:

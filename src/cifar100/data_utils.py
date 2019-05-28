@@ -96,7 +96,7 @@ def _read_data_by_order(data_path, train_files, num):
     if os.path.getsize(full_name) <= 0:
       print(full_name)
     with open(full_name,'rb') as finp:
-      data = pickle.load(finp, encoding='iso-8859-1')
+      data = pickle.load(finp)
       batch_images = data["data"].astype(np.float32) / 255.0
       batch_labels = np.array(data["fine_labels"], dtype=np.int32)
       for i in range(batch_labels.shape[0]):
@@ -125,7 +125,7 @@ def _read_data_by_order_v1(data_path, train_files, num):
     if os.path.getsize(full_name) <= 0:
       print(full_name)
     with open(full_name,'rb') as finp:
-      data = pickle.load(finp, encoding='iso-8859-1')
+      data = pickle.load(finp)
       batch_images = data["data"].astype(np.float32) / 255.0
       batch_labels = np.array(data["fine_labels"], dtype=np.int32)
       for i in range(batch_labels.shape[0]):
