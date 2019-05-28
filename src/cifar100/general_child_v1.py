@@ -58,6 +58,8 @@ class GeneralChildV1(Model):
                data_format="NHWC",
                name="child",
                class_num=0,
+               total_classes=100,
+               cl_group=10,
                image_i=None,
                label_i=None,
                *args,
@@ -85,6 +87,8 @@ class GeneralChildV1(Model):
       num_replicas=num_replicas,
       data_format=data_format,
       name=name)
+    self.cl_group = cl_group
+    self.total_classes = total_classes
     self.image_i = image_i
     self.label_i = label_i
     self.class_num = class_num
@@ -269,8 +273,8 @@ class GeneralChildV1(Model):
           inp_c = x.get_shape()[1].value
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
-        for i in range(1, 11):
-                create_weight('w'+str(i*10), [inp_c, i*10])
+        for i in range(1, 1+self.total_classes/self.cl_group):
+                create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
         w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
         self.model_size = tf.add(self.model_size, tf.constant(32*inp_c*self.class_num, dtype=tf.float32))
         x = tf.matmul(x, w)
@@ -1010,12 +1014,8 @@ class GeneralChildV1(Model):
       self.y_train_v1 = y_train_v1
 
     logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
-    logits_v1 = self._model(self.x_train_v1, is_training=False, reuse=True)
+    logits_v1 = self._model(self.x_train_v1, is_training=True, reuse=True)
 
-    #log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    #  logits=logits, labels=self.y_train)
-    #log_probs_v1 = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    #  logits=logits_v1, labels=self.y_train_v1)
     order = np.arange(10*10)
     old_class = (order[range(self.class_num-10)]).astype(np.int32)
     new_class = (order[range(self.class_num-10, self.class_num)]).astype(np.int32)
@@ -1025,20 +1025,14 @@ class GeneralChildV1(Model):
     pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
     label_old_classes = tf.stack([tf.one_hot(self.y_train_v1,100)[:,i] for i in old_class], axis=1)
     label_new_classes = tf.stack([tf.one_hot(self.y_train, 100)[:,i] for i in new_class], axis=1)
-    log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
+    self.log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
       logits=pred_new_cl, labels=label_new_classes)
-    log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
+    self.log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
       logits=pred_old_cl, labels=label_old_classes)
 
-
-    #log_probs = tf.expand_dims(log_probs, 1)
-    #log_probs_v1 = tf.expand_dims(log_probs_v1, 1)
-    #print(log_probs.shape)
-    #print(log_probs_v1.shape)
-    #print(tf.reduce_mean(log_probs).shape)
-    self.loss = tf.reduce_mean(tf.concat([log_probs, log_probs_v1],axis=1))
-    #print(self.loss.shape)
-    #self.loss = tf.reduce_mean(log_probs)
+    #self.log_probs = tf.expand_dims(self.log_probs, 1)
+    #self.log_probs_v1 = tf.expand_dims(self.log_probs_v1, 1)
+    self.loss = tf.reduce_mean(tf.concat([self.log_probs, self.log_probs_v1],axis=1))
 
     self.train_preds = tf.argmax(logits, axis=1)
     self.train_preds = tf.to_int32(self.train_preds)

@@ -58,6 +58,8 @@ class GeneralChild(Model):
                data_format="NHWC",
                name="child",
                class_num=0,
+               total_classes=100,
+               cl_group=10,
                *args,
                **kwargs
               ):
@@ -83,6 +85,8 @@ class GeneralChild(Model):
       num_replicas=num_replicas,
       data_format=data_format,
       name=name)
+    self.cl_group = cl_group
+    self.total_classes = total_classes
     self.class_num = class_num
     self.whole_channels = whole_channels
     self.lr_cosine = lr_cosine
@@ -265,8 +269,8 @@ class GeneralChild(Model):
           inp_c = x.get_shape()[1].value
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
-        for i in range(1, 11):
-                create_weight('w'+str(i*10), [inp_c, i*10])
+        for i in range(1, 1+self.total_classes/self.cl_group):
+                create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
         w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
         self.model_size = tf.add(self.model_size, tf.constant(32*inp_c*self.class_num, dtype=tf.float32))
         x = tf.matmul(x, w)

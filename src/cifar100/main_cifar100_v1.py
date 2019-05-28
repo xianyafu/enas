@@ -92,132 +92,9 @@ DEFINE_boolean("controller_use_critic", False, "")
 
 DEFINE_integer("log_every", 50, "How many steps to log")
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
+DEFINE_integer("cl_group", 10, "how many class per incremental train")
+DEFINE_integer("total_classes", 100, "total classes of the dataset")
 
-def get_ops(images, labels):
-  """
-  Args:
-    images: dict with keys {"train", "valid", "test"}.
-    labels: dict with keys {"train", "valid", "test"}.
-  """
-
-  assert FLAGS.search_for is not None, "Please specify --search_for"
-
-  if FLAGS.search_for == "micro":
-    ControllerClass = MicroController
-    ChildClass = MicroChild
-  else:
-    ControllerClass = GeneralController
-    ChildClass = GeneralChild
-
-  child_model = ChildClass(
-    images,
-    labels,
-    use_aux_heads=FLAGS.child_use_aux_heads,
-    cutout_size=FLAGS.child_cutout_size,
-    whole_channels=FLAGS.controller_search_whole_channels,
-    num_layers=FLAGS.child_num_layers,
-    num_cells=FLAGS.child_num_cells,
-    num_branches=FLAGS.child_num_branches,
-    fixed_arc=FLAGS.child_fixed_arc,
-    out_filters_scale=FLAGS.child_out_filters_scale,
-    out_filters=FLAGS.child_out_filters,
-    keep_prob=FLAGS.child_keep_prob,
-    drop_path_keep_prob=FLAGS.child_drop_path_keep_prob,
-    num_epochs=FLAGS.num_epochs,
-    l2_reg=FLAGS.child_l2_reg,
-    data_format=FLAGS.data_format,
-    batch_size=FLAGS.batch_size,
-    clip_mode="norm",
-    grad_bound=FLAGS.child_grad_bound,
-    lr_init=FLAGS.child_lr,
-    lr_dec_every=FLAGS.child_lr_dec_every,
-    lr_dec_rate=FLAGS.child_lr_dec_rate,
-    lr_cosine=FLAGS.child_lr_cosine,
-    lr_max=FLAGS.child_lr_max,
-    lr_min=FLAGS.child_lr_min,
-    lr_T_0=FLAGS.child_lr_T_0,
-    lr_T_mul=FLAGS.child_lr_T_mul,
-    optim_algo="momentum",
-    sync_replicas=FLAGS.child_sync_replicas,
-    num_aggregate=FLAGS.child_num_aggregate,
-    num_replicas=FLAGS.child_num_replicas,
-    class_num=10,
-  )
-
-  if FLAGS.child_fixed_arc is None:
-    controller_model = ControllerClass(
-      search_for=FLAGS.search_for,
-      search_whole_channels=FLAGS.controller_search_whole_channels,
-      skip_target=FLAGS.controller_skip_target,
-      skip_weight=FLAGS.controller_skip_weight,
-      num_cells=FLAGS.child_num_cells,
-      num_layers=FLAGS.child_num_layers,
-      num_branches=FLAGS.child_num_branches,
-      out_filters=FLAGS.child_out_filters,
-      lstm_size=64,
-      lstm_num_layers=1,
-      lstm_keep_prob=1.0,
-      tanh_constant=FLAGS.controller_tanh_constant,
-      op_tanh_reduce=FLAGS.controller_op_tanh_reduce,
-      temperature=FLAGS.controller_temperature,
-      lr_init=FLAGS.controller_lr,
-      lr_dec_start=0,
-      lr_dec_every=1000000,  # never decrease learning rate
-      l2_reg=FLAGS.controller_l2_reg,
-      entropy_weight=FLAGS.controller_entropy_weight,
-      bl_dec=FLAGS.controller_bl_dec,
-      use_critic=FLAGS.controller_use_critic,
-      optim_algo="adam",
-      sync_replicas=FLAGS.controller_sync_replicas,
-      num_aggregate=FLAGS.controller_num_aggregate,
-      num_replicas=FLAGS.controller_num_replicas)
-
-    child_model.connect_controller(controller_model)
-    controller_model.build_trainer(child_model)
-
-    controller_ops = {
-      "train_step": controller_model.train_step,
-      "loss": controller_model.loss,
-      "train_op": controller_model.train_op,
-      "lr": controller_model.lr,
-      "grad_norm": controller_model.grad_norm,
-      "valid_acc": controller_model.valid_acc,
-      "optimizer": controller_model.optimizer,
-      "baseline": controller_model.baseline,
-      "entropy": controller_model.sample_entropy,
-      "sample_arc": controller_model.sample_arc,
-      "skip_rate": controller_model.skip_rate,
-      "arc_mem": controller_model.arc_mem,
-      "in_time": controller_model.in_time,
-    }
-  else:
-    assert not FLAGS.controller_training, (
-      "--child_fixed_arc is given, cannot train controller")
-    child_model.connect_controller(None)
-    controller_ops = None
-
-  child_ops = {
-    "global_step": child_model.global_step,
-    "loss": child_model.loss,
-    "train_op": child_model.train_op,
-    "lr": child_model.lr,
-    "grad_norm": child_model.grad_norm,
-    "train_acc": child_model.train_acc,
-    "optimizer": child_model.optimizer,
-    "num_train_batches": child_model.num_train_batches,
-    "model_size": child_model.model_size,
-    "infer_time": child_model.infer_time,
-  }
-
-  ops = {
-    "child": child_ops,
-    "controller": controller_ops,
-    "eval_every": child_model.num_train_batches * FLAGS.eval_every_epochs,
-    "eval_func": child_model.eval_once,
-    "num_train_batches": child_model.num_train_batches,
-  }
-
-  return ops
 def get_controller():
   ControllerClass = GeneralController
 
@@ -298,7 +175,9 @@ def get_ops_v1(images, labels, controller_model,index_num, images_i, labels_i):
     sync_replicas=FLAGS.child_sync_replicas,
     num_aggregate=FLAGS.child_num_aggregate,
     num_replicas=FLAGS.child_num_replicas,
-    class_num=index_num*10,
+    class_num=index_num*FLAGS.cl_group,
+    total_classes=FLAGS.total_classes,
+    cl_group=FLAGS.cl_group
     image_i=images_i,
     label_i=labels_i
   )
@@ -335,6 +214,7 @@ def get_ops_v1(images, labels, controller_model,index_num, images_i, labels_i):
     "pred": child_model.pred,
     "x_train": child_model.x_train,
     "y_train": child_model.y_train,
+    "x_train_v1": child_model.x_train_v1,
   }
 
   ops = {
@@ -396,7 +276,9 @@ def get_ops_v2(images, labels, controller_model,index_num):
     sync_replicas=FLAGS.child_sync_replicas,
     num_aggregate=FLAGS.child_num_aggregate,
     num_replicas=FLAGS.child_num_replicas,
-    class_num=index_num*10,
+    class_num=index_num*FLAGS.cl_group,
+    total_classes=FLAGS.total_classes,
+    cl_group=FLAGS.cl_group,
   )
   child_model.connect_controller(controller_model)
   controller_model.build_trainer(child_model)
@@ -448,7 +330,6 @@ def initialize_uninitialized(sess):
     is_not_initialized   = sess.run([tf.is_variable_initialized(var) for var in global_vars])
     not_initialized_vars = [v for (v, f) in zip(global_vars, is_not_initialized) if not f]
  
-    #print [str(i.name) for i in not_initialized_vars] # only for testing
     for i in not_initialized_vars:
             print(i.name)
     if len(not_initialized_vars):
@@ -464,7 +345,7 @@ def train(images, labels):
 
   for class_index in range(0, 1):
       print("!!!!!!!!!!!!!!!!!!")
-      print("for ",(class_index+1)*10, " class of cifar100")
+      print("for ",(class_index+1)*FLAGS.cl_group, " class of cifar100")
       ops = get_ops_v2(images[class_index], labels[class_index], controller_model, class_index+1)
       child_ops = ops["child"]
       controller_ops = ops["controller"]
@@ -599,8 +480,8 @@ def train(images, labels):
               for index in range(0,25):
                   x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
                   pred.sort(axis=0)
-                  tmp = np.zeros(128)
-                  for i in range(0, 128):
+                  tmp = np.zeros(FLAGS.batch_size)
+                  for i in range(0, FLAGS.batch_size):
                       tmp[i]=pred[i][0]
                   tmp.sort(axis=0)
                   small_20 = tmp[20]
@@ -612,22 +493,21 @@ def train(images, labels):
                          num += 1
                          m += 1
               print(num)
-            if epoch >= FLAGS.num_epochs:#100*(1+class_index):#FLAGS.num_epochs:
+            if epoch >= FLAGS.num_epochs:
               break
-          #coord.request_stop()
-          #coord.join(threads)
       tf.reset_default_graph()
   return images_i, labels_i
+
 def train_incre(index, images, labels, images_i, labels_i):
   g = tf.Graph()
   g.as_default()
   controller_model = get_controller()
-  images_i = np.zeros(((1+index)*500, 32, 32, 3), dtype=np.float32)
-  labels_i = np.zeros(((1+index)*500), dtype=np.int32)
+  images_i_new = np.zeros(((1+index)*500, 32, 32, 3), dtype=np.float32)
+  labels_i_new = np.zeros(((1+index)*500), dtype=np.int32)
 
   for class_index in range(index, index+1):
       print("!!!!!!!!!!!!!!!!!!")
-      print("for ",(class_index+1)*10, " class of cifar100")
+      print("for ",(class_index+1)*FLAGS.cl_group, " class of cifar100")
       ops = get_ops_v1(images[class_index], labels[class_index], controller_model, class_index+1, images_i, labels_i)
       child_ops = ops["child"]
       controller_ops = ops["controller"]
@@ -761,7 +641,7 @@ def train_incre(index, images, labels, images_i, labels_i):
               curr_time = time.time()
               print(float(curr_time-start_time))
 
-            if epoch == FLAGS.num_epochs*(1+class_index):#100*(1+class_index):
+            if epoch == FLAGS.num_epochs*(1+class_index):
               num = 0
               for index in range(0,25):
                   x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
@@ -774,18 +654,17 @@ def train_incre(index, images, labels, images_i, labels_i):
                   m = 0
                   for j in range(0, FLAGS.batch_size):
                       if pred[j][0] <= small_20 and m<20:
-                         images_i[num] = np.transpose(x_train[j],[1,2,0])
-                         labels_i[num] = y_train[j]
+                         images_i_new[num] = np.transpose(x_train[j],[1,2,0])
+                         labels_i_new[num] = y_train[j]
                          num += 1
                          m += 1
               print('num: ',num)
 
-            if epoch >= FLAGS.num_epochs*(1+class_index):#100*(1+class_index):#FLAGS.num_epochs:
+            if epoch >= FLAGS.num_epochs*(1+class_index):
               break
-          #coord.request_stop()
-          #coord.join(threads)
       tf.reset_default_graph()
-  return images_i, labels_i
+  return images_i_new, labels_i_new
+
 def main(_):
   print("-" * 80)
   if not os.path.isdir(FLAGS.output_dir):
@@ -809,7 +688,7 @@ def main(_):
 
   utils.print_user_flags()
   image_i, label_i = train(images, labels)
-  for i in range(1, 10):
+  for i in range(1, FLAGS.total_classes/FLAGS.cl_group):
       image_i, label_i = train_incre(i, images, labels, image_i, label_i)
 
 
