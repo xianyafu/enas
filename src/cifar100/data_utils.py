@@ -96,7 +96,7 @@ def _read_data_by_order(data_path, train_files, num):
     if os.path.getsize(full_name) <= 0:
       print(full_name)
     with open(full_name,'rb') as finp:
-      data = pickle.load(finp)
+      data = pickle.load(finp, encoding='iso-8859-1')
       batch_images = data["data"].astype(np.float32) / 255.0
       batch_labels = np.array(data["fine_labels"], dtype=np.int32)
       for i in range(batch_labels.shape[0]):
@@ -110,6 +110,36 @@ def _read_data_by_order(data_path, train_files, num):
   images = np.transpose(images, [0, 2, 3, 1])
 
   return images, labels
+
+def _read_data_by_order_v1(data_path, train_files, num):
+  """Reads CIFAR-10 format data. Always returns NHWC format.
+
+  Returns:
+    images: np tensor of size [N, H, W, C]
+    labels: np tensor of size [N]
+  """
+  images, labels = [], []
+  for file_name in train_files:
+    print(file_name)
+    full_name = os.path.join(data_path, file_name)
+    if os.path.getsize(full_name) <= 0:
+      print(full_name)
+    with open(full_name,'rb') as finp:
+      data = pickle.load(finp, encoding='iso-8859-1')
+      batch_images = data["data"].astype(np.float32) / 255.0
+      batch_labels = np.array(data["fine_labels"], dtype=np.int32)
+      for i in range(batch_labels.shape[0]):
+        if batch_labels[i] in range(0, num+10):
+          images.append(batch_images[i])
+          labels.append(batch_labels[i])
+  images = np.concatenate(images, axis=0)
+  labels = np.array(labels)
+  #labels = np.concatenate(labels, axis=0)
+  images = np.reshape(images, [-1, 3, 32, 32])
+  images = np.transpose(images, [0, 2, 3, 1])
+
+  return images, labels
+
 
 
 def read_data_by_order(data_path, num_valids=500):
@@ -136,7 +166,7 @@ def read_data_by_order(data_path, num_valids=500):
     else:
       images["valid"], labels["valid"] = None, None
  
-    images["test"], labels["test"] = _read_data_by_order(data_path, test_file, i*10)
+    images["test"], labels["test"] = _read_data_by_order_v1(data_path, test_file, i*10)
     print(i)
     print("Prepropcess: [subtract mean], [divide std]")
     mean = np.mean(images["train"], axis=(0, 1, 2), keepdims=True)
