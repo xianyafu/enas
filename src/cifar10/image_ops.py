@@ -98,7 +98,7 @@ def batch_norm(x, is_training, name="bn", decay=0.9, epsilon=1e-5,
   else:
     raise NotImplementedError("Unknown data_format {}".format(data_format))
 
-  with tf.variable_scope(name, reuse=None if is_training else True):
+  with tf.variable_scope(name, reuse=tf.AUTO_REUSE):#None if is_training else True):
     offset = tf.get_variable(
       "offset", shape,
       initializer=tf.constant_initializer(0.0, dtype=tf.float32))
@@ -138,7 +138,7 @@ def batch_norm_with_mask(x, is_training, mask, num_channels, name="bn",
   indices = tf.to_int32(indices)
   indices = tf.reshape(indices, [-1])
 
-  with tf.variable_scope(name, reuse=None if is_training else True):
+  with tf.variable_scope(name, reuse=tf.AUTO_REUSE):#None if is_training else True):
     offset = tf.get_variable(
       "offset", shape,
       initializer=tf.constant_initializer(0.0, dtype=tf.float32))
