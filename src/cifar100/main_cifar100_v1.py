@@ -662,8 +662,10 @@ def train_incre(index, images, labels, images_i, labels_i):
                          labels_i_new[num] = y_train[j]
                          num += 1
                          m += 1
+              for i in range(num, (1+index)*500):
+                  images_i_new[i]=images_i[i-500]
+                  labels_i_new[i]=labels_i[i-500]
               print('num: ',num)
-
             if epoch >= FLAGS.num_epochs*(1+class_index):
               break
       tf.reset_default_graph()
