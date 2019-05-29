@@ -177,7 +177,7 @@ def get_ops_v1(images, labels, controller_model,index_num, images_i, labels_i):
     num_replicas=FLAGS.child_num_replicas,
     class_num=index_num*FLAGS.cl_group,
     total_classes=FLAGS.total_classes,
-    cl_group=FLAGS.cl_group
+    cl_group=FLAGS.cl_group,
     image_i=images_i,
     label_i=labels_i
   )
@@ -688,7 +688,7 @@ def main(_):
 
   utils.print_user_flags()
   image_i, label_i = train(images, labels)
-  for i in range(1, FLAGS.total_classes/FLAGS.cl_group):
+  for i in range(1, int(FLAGS.total_classes/FLAGS.cl_group)):
       image_i, label_i = train_incre(i, images, labels, image_i, label_i)
 
 

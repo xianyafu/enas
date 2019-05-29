@@ -269,9 +269,10 @@ class GeneralChild(Model):
           inp_c = x.get_shape()[1].value
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
-        for i in range(1, 1+self.total_classes/self.cl_group):
-                create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
-        w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
+        #for i in range(1, 1+self.total_classes/self.cl_group):
+        #        create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
+        #w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
+        w = create_weight("w", [inp_c, self.total_classes])
         self.model_size = tf.add(self.model_size, tf.constant(32*inp_c*self.class_num, dtype=tf.float32))
         x = tf.matmul(x, w)
         self.pred = tf.nn.softmax(x)

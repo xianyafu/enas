@@ -273,9 +273,10 @@ class GeneralChildV1(Model):
           inp_c = x.get_shape()[1].value
         else:
           raise ValueError("Unknown data_format {0}".format(self.data_format))
-        for i in range(1, 1+self.total_classes/self.cl_group):
-                create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
-        w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
+        #for i in range(1, 1+self.total_classes/self.cl_group):
+        #        create_weight('w'+str(i*self.cl_group), [inp_c, i*self.cl_group])
+        #w = create_weight("w"+str(self.class_num), [inp_c, self.class_num])
+        w = create_weight("w", [inp_c, self.total_classes])
         self.model_size = tf.add(self.model_size, tf.constant(32*inp_c*self.class_num, dtype=tf.float32))
         x = tf.matmul(x, w)
         self.pred = tf.nn.softmax(x)
@@ -1014,7 +1015,7 @@ class GeneralChildV1(Model):
       self.y_train_v1 = y_train_v1
 
     logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
-    logits_v1 = self._model(self.x_train_v1, is_training=True, reuse=True)
+    logits_v1 = self._model(self.x_train_v1, is_training=False, reuse=True)
 
     order = np.arange(10*10)
     old_class = (order[range(self.class_num-10)]).astype(np.int32)
