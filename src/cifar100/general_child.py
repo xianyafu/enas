@@ -973,7 +973,13 @@ class GeneralChild(Model):
   def _build_train(self):
     print("-" * 80)
     print("Build train graph")
-    logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
+    with tf.variable_scope("new_class"):
+         logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
+    self.variables_graph = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="new_class")
+    with tf.variable_scope("store_class"):
+         logits_v1 = self._model(self.x_train, is_training=False, reuse=False)
+    self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
+
     log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
       logits=logits, labels=self.y_train)
     self.loss = tf.reduce_mean(log_probs)
@@ -984,8 +990,9 @@ class GeneralChild(Model):
     self.train_acc = tf.to_int32(self.train_acc)
     self.train_acc = tf.reduce_sum(self.train_acc)
 
-    tf_variables = [var
-        for var in tf.trainable_variables() if var.name.startswith(self.name)]
+    #tf_variables = [var
+    #    for var in tf.trainable_variables() if var.name.startswith(self.name)]
+    tf_variables = self.variables_graph
     self.num_vars = count_model_params(tf_variables)
     print("Model has {} params".format(self.num_vars))
     with tf.variable_scope("", reuse=tf.AUTO_REUSE):
@@ -1018,7 +1025,8 @@ class GeneralChild(Model):
     if self.x_valid is not None:
       print("-" * 80)
       print("Build valid graph")
-      logits = self._model(self.x_valid, False, reuse=True)
+      with tf.variable_scope("new_class"):
+           logits = self._model(self.x_valid, False, reuse=True)
       self.valid_preds = tf.argmax(logits, axis=1)
       self.valid_preds = tf.to_int32(self.valid_preds)
       self.valid_acc = tf.equal(self.valid_preds, self.y_valid)
@@ -1029,7 +1037,8 @@ class GeneralChild(Model):
   def _build_test(self):
     print("-" * 80)
     print("Build test graph")
-    logits = self._model(self.x_test, False, reuse=True)
+    with tf.variable_scope("new_class"):
+         logits = self._model(self.x_test, False, reuse=True)
     self.test_preds = tf.argmax(logits, axis=1)
     self.test_preds = tf.to_int32(self.test_preds)
     self.test_acc = tf.equal(self.test_preds, self.y_test)
@@ -1070,7 +1079,8 @@ class GeneralChild(Model):
         x_valid_shuffle = tf.map_fn(
           _pre_process, x_valid_shuffle, back_prop=False)
 
-    logits = self._model(x_valid_shuffle, False, reuse=True)
+    with tf.variable_scope("new_class"):
+         logits = self._model(x_valid_shuffle, False, reuse=True)
     valid_shuffle_preds = tf.argmax(logits, axis=1)
     valid_shuffle_preds = tf.to_int32(valid_shuffle_preds)
     self.valid_shuffle_acc = tf.equal(valid_shuffle_preds, y_valid_shuffle)

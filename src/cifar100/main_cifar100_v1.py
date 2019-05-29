@@ -215,6 +215,8 @@ def get_ops_v1(images, labels, controller_model,index_num, images_i, labels_i):
     "x_train": child_model.x_train,
     "y_train": child_model.y_train,
     "x_train_v1": child_model.x_train_v1,
+    "variables_graph":child_model.variables_graph,
+    "variables_graph2":child_model.variables_graph2,
   }
 
   ops = {
@@ -535,8 +537,10 @@ def train_incre(index, images, labels, images_i, labels_i):
           variables_to_restore = [v for v in variables if v.name.split('/')[0] == 'controller']
           saver1 = tf.train.Saver(variables_to_restore)
           saver.restore(sess, tf.train.latest_checkpoint('/home/fuxianya/github/enas/outputs/') )
+          op_assign = [(child_ops["variables_graph2"][i]).assign(child_ops["variables_graph"][i]) for i in range(len(child_ops["variables_graph"]))]
           start_time = time.time()
           while True:
+            sess.run(op_assign)
             run_ops = [
               child_ops["loss"],
               child_ops["lr"],
