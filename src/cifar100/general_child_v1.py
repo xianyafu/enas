@@ -977,63 +977,35 @@ class GeneralChildV1(Model):
   def _build_train(self):
     print("-" * 80)
     print("Build train graph")
-    with tf.device("/cpu:0"):
-      # training data
-      self.num_train_examples_v1 = np.shape(self.image_i)[0]
-      self.num_train_batches_v1 = (
-        self.num_train_examples_v1 + self.batch_size - 1) // self.batch_size
-      x_train_v1, y_train_v1 = tf.train.shuffle_batch(
-        [self.image_i, self.label_i],
-        #input_queue,
-        batch_size=self.batch_size,
-        capacity=50000,
-        enqueue_many=True,
-        min_after_dequeue=0,
-        num_threads=16,
-        seed=self.seed,
-        allow_smaller_final_batch=True,
-      )
-      def _pre_process(x):
-        x = tf.pad(x, [[4, 4], [4, 4], [0, 0]])
-        x = tf.random_crop(x, [32, 32, 3], seed=self.seed)
-        x = tf.image.random_flip_left_right(x, seed=self.seed)
-        if self.cutout_size is not None:
-          mask = tf.ones([self.cutout_size, self.cutout_size], dtype=tf.int32)
-          start = tf.random_uniform([2], minval=0, maxval=32, dtype=tf.int32)
-          mask = tf.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
-                               [self.cutout_size + start[1], 32 - start[1]]])
-          mask = mask[self.cutout_size: self.cutout_size + 32,
-                      self.cutout_size: self.cutout_size + 32]
-          mask = tf.reshape(mask, [32, 32, 1])
-          mask = tf.tile(mask, [1, 1, 3])
-          x = tf.where(tf.equal(mask, 0), x=x, y=tf.zeros_like(x))
-        if self.data_format == "NCHW":
-          x = tf.transpose(x, [2, 0, 1])
-
-        return x
-      self.x_train_v1 = tf.map_fn(_pre_process, x_train_v1, back_prop=False)
-      self.y_train_v1 = y_train_v1
     with tf.variable_scope("new_class"):
          logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
     self.variables_graph = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="new_class")
     with tf.variable_scope("store_class"):
-         logits_v1 = self._model(self.x_train_v1, is_training=False, reuse=False)
+         logits_v1 = self._model(self.x_train, is_training=False, reuse=False)
     self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
 
-    order = np.arange(10*10)
-    old_class = (order[range(self.class_num-10)]).astype(np.int32)
-    new_class = (order[range(self.class_num-10, self.class_num)]).astype(np.int32)
+    label_batch = tf.one_hot(self.y_train, self.total_classes)
+    copy_y = tf.argmax(logits_v1, 1)
+    copy_batch = tf.one_hot(copy_y, self.total_classes)
+    order = np.arange(self.total_classes)
     scores = tf.concat(logits, 0)
     scores_stored = tf.concat(logits_v1, 0)
-    pred_old_cl = tf.stack([scores_stored[:,i] for i in old_class], axis=1)
+    old_class = (order[range(self.class_num-10)]).astype(np.int32)
+    #new_class = (order[range(self.class_num-10, self.class_num)]).astype(np.int32)
+    new_class = (order[range(self.class_num-10, self.total_classes)]).astype(np.int32)
+    #label_old_classes = tf.sigmoid(tf.stack([scores_stored[:,i] for i in old_class], axis=1))
+    label_old_classes = tf.stack([copy_batch[:,i] for i in old_class], axis=1)
+    label_new_classes = tf.stack([label_batch[:,i] for i in new_class], axis=1)
+    pred_old_cl = tf.stack([scores[:,i] for i in old_class], axis=1)
     pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
-    label_old_classes = tf.stack([tf.one_hot(self.y_train_v1,100)[:,i] for i in old_class], axis=1)
-    label_new_classes = tf.stack([tf.one_hot(self.y_train, 100)[:,i] for i in new_class], axis=1)
     self.log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
       logits=pred_new_cl, labels=label_new_classes)
     self.log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
       logits=pred_old_cl, labels=label_old_classes)
-
+    self.pred_old_cl = pred_old_cl
+    self.label_old_classes = label_old_classes
+    self.pred_new_cl = pred_new_cl
+    self.label_new_classes = label_new_classes
     #self.log_probs = tf.expand_dims(self.log_probs, 1)
     #self.log_probs_v1 = tf.expand_dims(self.log_probs_v1, 1)
     self.loss = tf.reduce_mean(tf.concat([self.log_probs, self.log_probs_v1],axis=1))

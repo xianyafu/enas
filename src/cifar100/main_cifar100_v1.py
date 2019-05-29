@@ -214,9 +214,14 @@ def get_ops_v1(images, labels, controller_model,index_num, images_i, labels_i):
     "pred": child_model.pred,
     "x_train": child_model.x_train,
     "y_train": child_model.y_train,
-    "x_train_v1": child_model.x_train_v1,
     "variables_graph":child_model.variables_graph,
     "variables_graph2":child_model.variables_graph2,
+    "log_probs": child_model.log_probs,
+    "log_probs_v1": child_model.log_probs_v1,
+    "pred_old_cl": child_model.pred_old_cl,
+    "label_old_classes": child_model.label_old_classes,
+    "pred_new_cl": child_model.pred_new_cl,
+    "label_new_classes": child_model.label_new_classes,
   }
 
   ops = {
@@ -342,9 +347,6 @@ def train(images, labels):
   g = tf.Graph()
   g.as_default()
   controller_model = get_controller()
-  images_i = np.zeros((500, 32, 32, 3), dtype=np.float32)
-  labels_i = np.zeros((500), dtype=np.int32)
-
   for class_index in range(0, 1):
       print("!!!!!!!!!!!!!!!!!!")
       print("for ",(class_index+1)*FLAGS.cl_group, " class of cifar100")
@@ -478,7 +480,12 @@ def train(images, labels):
               print(float(curr_time-start_time))
 
             if epoch == FLAGS.num_epochs:
-              num = 0
+              images_i = np.zeros((4500+500, 32, 32, 3), dtype=np.float32)
+              labels_i = np.zeros((4500+500), dtype=np.int32)
+              for i in range(0, images[class_index+1]["train"].shape[0]):
+                      images_i[i] = images[class_index+1]["train"][i]
+                      labels_i[i] = labels[class_index+1]["train"][i]
+              num = images[class_index+1]["train"].shape[0]
               for index in range(0,25):
                   x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
                   pred.sort(axis=0)
@@ -494,6 +501,8 @@ def train(images, labels):
                          labels_i[num] = y_train[j]
                          num += 1
                          m += 1
+              images[class_index+1]["train"] = images_i
+              labels[class_index+1]["train"] = labels_i
               print(num)
             if epoch >= FLAGS.num_epochs:
               break
@@ -504,8 +513,6 @@ def train_incre(index, images, labels, images_i, labels_i):
   g = tf.Graph()
   g.as_default()
   controller_model = get_controller()
-  images_i_new = np.zeros(((1+index)*500, 32, 32, 3), dtype=np.float32)
-  labels_i_new = np.zeros(((1+index)*500), dtype=np.int32)
 
   for class_index in range(index, index+1):
       print("!!!!!!!!!!!!!!!!!!")
@@ -534,7 +541,8 @@ def train_incre(index, images, labels, images_i, labels_i):
       with SingularMonitoredSession(
         config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
           variables = tf.contrib.framework.get_variables_to_restore()
-          variables_to_restore = [v for v in variables if v.name.split('/')[0] == 'controller']
+          #variables_to_restore = [v for v in variables if v.name.split('/')[0] == 'controller']
+          variables_to_restore = variables
           saver1 = tf.train.Saver(variables_to_restore)
           saver.restore(sess, tf.train.latest_checkpoint('/home/fuxianya/github/enas/outputs/') )
           op_assign = [(child_ops["variables_graph2"][i]).assign(child_ops["variables_graph"][i]) for i in range(len(child_ops["variables_graph"]))]
@@ -573,7 +581,6 @@ def train_incre(index, images, labels, images_i, labels_i):
               log_string += " mem= "+str(ms)
               log_string += " infer_time="+str(intm)
               print(log_string)
-              
             if actual_step % ops["eval_every"] == 0:
               if (FLAGS.controller_training and
                   epoch % FLAGS.controller_train_every == 0):
@@ -646,7 +653,12 @@ def train_incre(index, images, labels, images_i, labels_i):
               print(float(curr_time-start_time))
 
             if epoch == FLAGS.num_epochs*(1+class_index):
-              num = 0
+              images_i_new = np.zeros((4500+(1+index)*500, 32, 32, 3), dtype=np.float32)
+              labels_i_new = np.zeros((4500+(1+index)*500), dtype=np.int32)
+              for i in range(0, images[class_index+1]["train"].shape[0]):
+                      images_i_new[i] = images[class_index+1]["train"][i]
+                      labels_i_new[i] = labels[class_index+1]["train"][i]
+              num = images[class_index+1]["train"].shape[0]
               for index in range(0,25):
                   x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
                   pred.sort(axis=0)
@@ -662,9 +674,12 @@ def train_incre(index, images, labels, images_i, labels_i):
                          labels_i_new[num] = y_train[j]
                          num += 1
                          m += 1
-              for i in range(num, (1+index)*500):
-                  images_i_new[i]=images_i[i-500]
-                  labels_i_new[i]=labels_i[i-500]
+              for i in range(4500, images[class_index]["train"].shape[0]):
+                    images_i_new[num] = images[class_index]["train"][i]
+                    labels_i_new[num] = labels[class_index]["train"][i]
+                    num += 1
+              images[class_index+1]["train"] = images_i_new
+              labels[class_index+1]["train"] = labels_i_new
               print('num: ',num)
             if epoch >= FLAGS.num_epochs*(1+class_index):
               break
