@@ -985,16 +985,14 @@ class GeneralChildV1(Model):
     self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
 
     label_batch = tf.one_hot(self.y_train, self.total_classes)
-    copy_y = tf.argmax(logits_v1, 1)
-    copy_batch = tf.one_hot(copy_y, self.total_classes)
     order = np.arange(self.total_classes)
     scores = tf.concat(logits, 0)
     scores_stored = tf.concat(logits_v1, 0)
     old_class = (order[range(self.class_num-10)]).astype(np.int32)
-    #new_class = (order[range(self.class_num-10, self.class_num)]).astype(np.int32)
     new_class = (order[range(self.class_num-10, self.total_classes)]).astype(np.int32)
+    print(old_class)
+    print(new_class)
     label_old_classes = tf.sigmoid(tf.stack([scores_stored[:,i] for i in old_class], axis=1))
-    #label_old_classes = tf.stack([copy_batch[:,i] for i in old_class], axis=1)
     label_new_classes = tf.stack([label_batch[:,i] for i in new_class], axis=1)
     pred_old_cl = tf.stack([scores[:,i] for i in old_class], axis=1)
     pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
@@ -1006,8 +1004,6 @@ class GeneralChildV1(Model):
     self.label_old_classes = label_old_classes
     self.pred_new_cl = pred_new_cl
     self.label_new_classes = label_new_classes
-    #self.log_probs = tf.expand_dims(self.log_probs, 1)
-    #self.log_probs_v1 = tf.expand_dims(self.log_probs_v1, 1)
     self.loss = tf.reduce_mean(tf.concat([self.log_probs, self.log_probs_v1],axis=1))
 
     self.train_preds = tf.argmax(logits, axis=1)
