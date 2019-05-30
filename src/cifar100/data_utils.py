@@ -175,7 +175,7 @@ def read_data_by_order(data_path, num_valids=500):
     print("mean: {}".format(np.reshape(mean * 255.0, [-1])))
     print("std: {}".format(np.reshape(std * 255.0, [-1])))
  
-    images["train"] = (images["train"] - mean) / std
+    #images["train"] = (images["train"] - mean) / std
     if num_valids:
       images["valid"] = (images["valid"] - mean) / std
     images["test"] = (images["test"] - mean) / std

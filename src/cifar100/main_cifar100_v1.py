@@ -350,6 +350,9 @@ def train(images, labels):
   class_index = 0
   print("!!!!!!!!!!!!!!!!!!")
   print("for ",(class_index+1)*FLAGS.cl_group, " class of cifar100")
+  mean = np.mean(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
+  std = np.std(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
+  images[class_index]["train"] = (images[class_index]["train"] - mean) / std
   ops = get_ops_v2(images[class_index], labels[class_index], controller_model, class_index+1)
   child_ops = ops["child"]
   controller_ops = ops["controller"]
@@ -486,34 +489,26 @@ def train(images, labels):
                   images_i[i] = images[class_index+1]["train"][i]
                   labels_i[i] = labels[class_index+1]["train"][i]
           num = images[class_index+1]["train"].shape[0]
-          indexs = np.zeros(FLAGS.cl_group)
+          indexs = np.zeros((FLAGS.cl_group), dtype=np.int)
+          dif = 0
+          same = 0
           while np.sum(indexs)<500:
               x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
               for b in range(FLAGS.batch_size):
-                  list_pred = pred[i].tolist()
+                  list_pred = pred[b].tolist()
                   pred_class = list_pred.index(max(list_pred))
-                  print(y_train[b], " ", pred_class)
                   for cl in range(class_index*FLAGS.cl_group, (class_index+1)*FLAGS.cl_group):
                       if pred_class == cl and indexs[cl-class_index*FLAGS.cl_group]<50:
+                              if y_train[b]==pred_class:
+                                     same +=1
+                              else:
+                                     dif += 1
                               images_i[num] = np.transpose(x_train[b],[1,2,0])
                               labels_i[num] = y_train[b]
                               num += 1
                               indexs[cl-class_index*FLAGS.cl_group] += 1
-              '''
-              pred.sort(axis=0)
-              tmp = np.zeros(FLAGS.batch_size)
-              for i in range(0, FLAGS.batch_size):
-                  tmp[i]=pred[i][0]
-              tmp.sort(axis=0)
-              small_20 = tmp[19]
-              m = 0
-              for j in range(0, FLAGS.batch_size):
-                  if pred[j][0] <= small_20 and m<20:
-                     images_i[num] = np.transpose(x_train[j],[1,2,0])
-                     labels_i[num] = y_train[j]
-                     num += 1
-                     m += 1
-              '''
+          print("same: ", same)
+          print("diff: ", dif)
           images[class_index+1]["train"] = images_i
           labels[class_index+1]["train"] = labels_i
           print(num)
@@ -529,6 +524,9 @@ def train_incre(index, images, labels, images_i, labels_i):
   class_index = index
   print("!!!!!!!!!!!!!!!!!!")
   print("for ",(class_index+1)*FLAGS.cl_group, " class of cifar100")
+  mean = np.mean(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
+  std = np.std(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
+  images[class_index]["train"] = (images[class_index]["train"] - mean) / std
   ops = get_ops_v1(images[class_index], labels[class_index], controller_model, class_index+1, images_i, labels_i)
   child_ops = ops["child"]
   controller_ops = ops["controller"]
@@ -569,14 +567,14 @@ def train_incre(index, images, labels, images_i, labels_i):
           child_ops["train_op"],
           child_ops["model_size"],
           child_ops["infer_time"],
-          child_ops["y_train"],
-          child_ops["pred"],
+          #child_ops["y_train"],
+          #child_ops["pred"],
           #child_ops["label_old_classes"],
           #child_ops["pred_old_cl"],
           #child_ops["label_new_classes"],
           #child_ops["pred_new_cl"]
         ]
-        loss, lr, gn, tr_acc, _, ms, intm, y_tr = sess.run(run_ops)
+        loss, lr, gn, tr_acc, _, ms, intm = sess.run(run_ops)
         global_step = sess.run(child_ops["global_step"])
  
         if FLAGS.child_sync_replicas:
@@ -600,9 +598,9 @@ def train_incre(index, images, labels, images_i, labels_i):
           log_string += " infer_time="+str(intm)
           print(log_string)
           #print(loc, poc, lnc, pnc)
-          for i in range(0, FLAGS.batch_size):
-               pred_list = pred[i].tolist()
-               print(y_train[i]," ", pred_list.index(max(pred_list)))
+          #for i in range(0, FLAGS.batch_size):
+          #     pred_list = pred[i].tolist()
+          #     print(y_tr[i]," ", pred_list.index(max(pred_list)))
         if actual_step % ops["eval_every"] == 0:
           if (FLAGS.controller_training and
               epoch % FLAGS.controller_train_every == 0):
@@ -681,36 +679,26 @@ def train_incre(index, images, labels, images_i, labels_i):
                   images_i_new[i] = images[class_index+1]["train"][i]
                   labels_i_new[i] = labels[class_index+1]["train"][i]
           num = images[class_index+1]["train"].shape[0]
-          indexs = np.zeros(FLAGS.cl_group)
+          indexs = np.zeros((FLAGS.cl_group), dtype=np.int)
+          dif = 0
+          same = 0
           while np.sum(indexs)<500:
               x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
               for b in range(FLAGS.batch_size):
                   list_pred = pred[b].tolist()
                   pred_class = list_pred.index(max(list_pred))
-                  print(y_train[b], " ", pred_class)
                   for cl in range(class_index*FLAGS.cl_group, (class_index+1)*FLAGS.cl_group):
                       if pred_class == cl and indexs[cl-class_index*FLAGS.cl_group]<50:
+                              if y_train[b]==pred_class:
+                                     same +=1
+                              else:
+                                     dif += 1
                               images_i[num] = np.transpose(x_train[b],[1,2,0])
                               labels_i[num] = y_train[b]
                               num += 1
                               indexs[cl-class_index*FLAGS.cl_group] += 1
-          '''
-          for index in range(0,25):
-              x_train, y_train, pred = sess.run([child_ops["x_train"],child_ops["y_train"],child_ops["pred"]])
-              pred.sort(axis=0)
-              tmp = np.zeros(FLAGS.batch_size)
-              for i in range(0, FLAGS.batch_size):
-                  tmp[i]=pred[i][0]
-              tmp.sort(axis=0)
-              small_20 = tmp[20]
-              m = 0
-              for j in range(0, FLAGS.batch_size):
-                  if pred[j][0] <= small_20 and m<20:
-                     images_i_new[num] = np.transpose(x_train[j],[1,2,0])
-                     labels_i_new[num] = y_train[j]
-                     num += 1
-                     m += 1
-          '''
+          print("same: ", same)
+          print("diff: ", dif)
           for i in range(4500, images[class_index]["train"].shape[0]):
                 images_i_new[num] = images[class_index]["train"][i]
                 labels_i_new[num] = labels[class_index]["train"][i]
