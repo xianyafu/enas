@@ -353,6 +353,8 @@ def train(images, labels):
   mean = np.mean(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
   std = np.std(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
   images[class_index]["train"] = (images[class_index]["train"] - mean) / std
+  images[class_index]["test"] = (images[class_index]["test"] - mean) / std
+  images[class_index]["valid"] = (images[class_index]["valid"] - mean) / std
   ops = get_ops_v2(images[class_index], labels[class_index], controller_model, class_index+1)
   child_ops = ops["child"]
   controller_ops = ops["controller"]
@@ -488,7 +490,6 @@ def train(images, labels):
           curr_time = time.time()
           print(float(curr_time-start_time))
 
-        '''
         if epoch == FLAGS.num_epochs:
           images_i = np.zeros((4500+500, 32, 32, 3), dtype=np.float32)
           labels_i = np.zeros((4500+500), dtype=np.int32)
@@ -506,23 +507,17 @@ def train(images, labels):
                   pred_class = list_pred.index(max(list_pred))
                   for cl in range(class_index*FLAGS.cl_group, (class_index+1)*FLAGS.cl_group):
                       if pred_class == cl and indexs[cl-class_index*FLAGS.cl_group]<50:
-                              if y_train[b]==pred_class:
-                                     same +=1
-                              else:
-                                     dif += 1
                               images_i[num] = np.transpose(x_train[b],[1,2,0])
                               labels_i[num] = y_train[b]
                               num += 1
                               indexs[cl-class_index*FLAGS.cl_group] += 1
-          print("same: ", same)
-          print("diff: ", dif)
           images[class_index+1]["train"] = images_i
           labels[class_index+1]["train"] = labels_i
-          print(num)
-        '''
-        if epoch == FLAGS.num_epochs:
-           images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
-           labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
+          images[class_index+1]["valid"] = np.concatenate((images[class_index+1]["valid"],images[class_index]["valid"]), axis=0)
+          labels[class_index+1]["valid"] = np.append(labels[class_index+1]["valid"], labels[class_index]["valid"])
+        #if epoch == FLAGS.num_epochs:
+        #   images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
+        #   labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
         if epoch >= FLAGS.num_epochs:
           break
   tf.reset_default_graph()
@@ -540,6 +535,8 @@ def train_incre(index, images, labels, images_i, labels_i):
   mean = np.mean(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
   std = np.std(images[class_index]["train"], axis=(0, 1, 2), keepdims=True)
   images[class_index]["train"] = (images[class_index]["train"] - mean) / std
+  images[class_index]["test"] = (images[class_index]["test"] - mean) / std
+  images[class_index]["valid"] = (images[class_index]["valid"] - mean) / std
   ops = get_ops_v1(images[class_index], labels[class_index], controller_model, class_index+1, images_i, labels_i)
   child_ops = ops["child"]
   controller_ops = ops["controller"]
@@ -684,7 +681,6 @@ def train_incre(index, images, labels, images_i, labels_i):
           ops["eval_func"](sess, "test")
           curr_time = time.time()
           print(float(curr_time-start_time))
-        '''
         if epoch == FLAGS.num_epochs*(1+class_index):
           images_i_new = np.zeros((4500+(1+index)*500, 32, 32, 3), dtype=np.float32)
           labels_i_new = np.zeros((4500+(1+index)*500), dtype=np.int32)
@@ -702,27 +698,22 @@ def train_incre(index, images, labels, images_i, labels_i):
                   pred_class = list_pred.index(max(list_pred))
                   for cl in range(class_index*FLAGS.cl_group, (class_index+1)*FLAGS.cl_group):
                       if pred_class == cl and indexs[cl-class_index*FLAGS.cl_group]<50:
-                              if y_train[b]==pred_class:
-                                     same +=1
-                              else:
-                                     dif += 1
                               images_i[num] = np.transpose(x_train[b],[1,2,0])
                               labels_i[num] = y_train[b]
                               num += 1
                               indexs[cl-class_index*FLAGS.cl_group] += 1
-          print("same: ", same)
-          print("diff: ", dif)
           for i in range(4500, images[class_index]["train"].shape[0]):
                 images_i_new[num] = images[class_index]["train"][i]
                 labels_i_new[num] = labels[class_index]["train"][i]
                 num += 1
           images[class_index+1]["train"] = images_i_new
           labels[class_index+1]["train"] = labels_i_new
+          images[class_index+1]["valid"] = np.concatenate((images[class_index+1]["valid"],images[class_index]["valid"]), axis=0)
+          labels[class_index+1]["valid"] = np.append(labels[class_index+1]["valid"], labels[class_index]["valid"])
           print('num: ',num)
-        '''
-        if epoch == FLAGS.num_epochs:
-           images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
-           labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
+        #if epoch == FLAGS.num_epochs:
+        #   images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
+        #   labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
         if epoch >= FLAGS.num_epochs*(1+class_index):
           break
   tf.reset_default_graph()

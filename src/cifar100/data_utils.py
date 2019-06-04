@@ -161,8 +161,8 @@ def read_data_by_order(data_path, num_valids=500):
       images["valid"] = images["train"][-num_valids:]
       labels["valid"] = labels["train"][-num_valids:]
       
-      images["train"] = images["train"]#[:-num_valids]
-      labels["train"] = labels["train"]#[:-num_valids]
+      images["train"] = images["train"][:-num_valids]
+      labels["train"] = labels["train"][:-num_valids]
     else:
       images["valid"], labels["valid"] = None, None
  
@@ -176,9 +176,9 @@ def read_data_by_order(data_path, num_valids=500):
     print("std: {}".format(np.reshape(std * 255.0, [-1])))
  
     #images["train"] = (images["train"] - mean) / std
-    if num_valids:
-      images["valid"] = (images["valid"] - mean) / std
-    images["test"] = (images["test"] - mean) / std
+    #if num_valids:
+    #  images["valid"] = (images["valid"] - mean) / std
+    #images["test"] = (images["test"] - mean) / std
     total_images[i]=images
     total_labels[i]=labels
     print(total_images[i]["train"].shape)
