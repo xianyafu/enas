@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import tensorflow as tf
 
-from src.cifar10.models import Model
+from src.cifar100.models import Model
 from src.cifar10.image_ops import conv
 from src.cifar10.image_ops import fully_connected
 from src.cifar10.image_ops import batch_norm
@@ -62,6 +62,7 @@ class GeneralChildV1(Model):
                cl_group=10,
                image_i=None,
                label_i=None,
+               fixed_arc_old=None,
                *args,
                **kwargs
               ):
@@ -87,6 +88,7 @@ class GeneralChildV1(Model):
       num_replicas=num_replicas,
       data_format=data_format,
       name=name)
+    self.fixed_arc_old=fixed_arc_old
     self.cl_group = cl_group
     self.total_classes = total_classes
     self.image_i = image_i
@@ -202,7 +204,7 @@ class GeneralChildV1(Model):
     else:
       raise ValueError("Unknown data_format '{0}'".format(self.data_format))
 
-  def _model(self, images, is_training, reuse=False):
+  def _model(self, images, is_training, sample_arc, reuse=False):
     with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
       self.model_size =tf.get_variable("model_size", shape=[], dtype=tf.float32,
                                       initializer=tf.constant_initializer(0))
@@ -231,7 +233,7 @@ class GeneralChildV1(Model):
           if self.fixed_arc is None:
             x, self.model_size, self.infer_time = self._enas_layer(layer_id, layers, start_idx, out_filters, is_training, self.model_size, self.infer_time)
           else:
-            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, is_training)
+            x = self._fixed_layer(layer_id, layers, start_idx, out_filters, is_training, sample_arc)
           layers.append(x)
           if layer_id in self.pool_layers:
             if self.fixed_arc is not None:
@@ -532,7 +534,7 @@ class GeneralChildV1(Model):
     return out, model_size, infer_time
 
   def _fixed_layer(
-      self, layer_id, prev_layers, start_idx, out_filters, is_training):
+      self, layer_id, prev_layers, start_idx, out_filters, is_training, sample_arc):
     """
     Args:
       layer_id: current layer
@@ -549,7 +551,7 @@ class GeneralChildV1(Model):
       elif self.data_format == "NCHW":
         inp_c = inputs.get_shape()[1].value
 
-      count = self.sample_arc[start_idx]
+      count = sample_arc[start_idx]
       if count in [0, 1, 2, 3]:
         size = [3, 3, 5, 5]
         filter_size = size[count]
@@ -657,7 +659,7 @@ class GeneralChildV1(Model):
       else:
         raise ValueError("Unknown operation number '{0}'".format(count))
     else:
-      count = (self.sample_arc[start_idx:start_idx + 2*self.num_branches] *
+      count = (sample_arc[start_idx:start_idx + 2*self.num_branches] *
                self.out_filters_scale)
       branches = []
       total_out_channels = 0
@@ -702,7 +704,7 @@ class GeneralChildV1(Model):
         skip_start = start_idx + 1
       else:
         skip_start = start_idx + 2 * self.num_branches
-      skip = self.sample_arc[skip_start: skip_start + layer_id]
+      skip = sample_arc[skip_start: skip_start + layer_id]
       total_skip_channels = np.sum(skip) + 1
 
       res_layers = []
@@ -977,40 +979,57 @@ class GeneralChildV1(Model):
   def _build_train(self):
     print("-" * 80)
     print("Build train graph")
-    with tf.variable_scope("new_class"):
-         logits = self._model(self.x_train, is_training=True, reuse=tf.AUTO_REUSE)
-    self.variables_graph = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="new_class")
-    with tf.variable_scope("store_class"):
-         logits_v1 = self._model(self.x_train, is_training=False, reuse=False)
-    self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
+    if self.class_num != 10:
+        with tf.variable_scope("new_class"):
+             logits = self._model(self.x_train, is_training=True, sample_arc=self.sample_arc, reuse=tf.AUTO_REUSE)
+        self.variables_graph = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="new_class")
+        with tf.variable_scope("store_class"):
+             logits_v1 = self._model(self.x_train, is_training=False, sample_arc=self.sample_arc_old, reuse=False)
+        self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
+ 
+        label_batch = tf.one_hot(self.y_train, self.total_classes)
+        order = np.arange(self.total_classes)
+        scores = tf.concat(logits, 0)
+        scores_stored = tf.concat(logits_v1, 0)
+        old_class = (order[range(self.class_num-10)]).astype(np.int32)
+        new_class = (order[range(self.class_num-10, self.total_classes)]).astype(np.int32)
+        print(old_class)
+        print(new_class)
+        label_old_classes = tf.sigmoid(tf.stack([scores_stored[:,i] for i in old_class], axis=1))
+        label_new_classes = tf.stack([label_batch[:,i] for i in new_class], axis=1)
+        pred_old_cl = tf.stack([scores[:,i] for i in old_class], axis=1)
+        pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
+        self.log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
+          logits=pred_new_cl, labels=label_new_classes)
+        self.log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
+          logits=pred_old_cl, labels=label_old_classes)
+        self.pred_old_cl = pred_old_cl
+        self.label_old_classes = label_old_classes
+        self.pred_new_cl = pred_new_cl
+        self.label_new_classes = label_new_classes
+        self.loss = tf.reduce_mean(tf.concat([self.log_probs, self.log_probs_v1],axis=1))
+    else:
+        with tf.variable_scope("new_class"):
+             logits = self._model(self.x_train, is_training=True, sample_arc=self.sample_arc, reuse=tf.AUTO_REUSE)
+        self.variables_graph = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="new_class")
+        self.variables_graph2 = tf.get_collection(tf.GraphKeys.WEIGHTS, scope="store_class")
+        log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
+             logits=logits, labels=self.y_train)
+        self.loss = tf.reduce_mean(log_probs)
 
-    label_batch = tf.one_hot(self.y_train, self.total_classes)
-    order = np.arange(self.total_classes)
-    scores = tf.concat(logits, 0)
-    scores_stored = tf.concat(logits_v1, 0)
-    old_class = (order[range(self.class_num-10)]).astype(np.int32)
-    new_class = (order[range(self.class_num-10, self.total_classes)]).astype(np.int32)
-    print(old_class)
-    print(new_class)
-    label_old_classes = tf.sigmoid(tf.stack([scores_stored[:,i] for i in old_class], axis=1))
-    label_new_classes = tf.stack([label_batch[:,i] for i in new_class], axis=1)
-    pred_old_cl = tf.stack([scores[:,i] for i in old_class], axis=1)
-    pred_new_cl = tf.stack([scores[:,i] for i in new_class], axis=1)
-    self.log_probs = tf.nn.sigmoid_cross_entropy_with_logits(
-      logits=pred_new_cl, labels=label_new_classes)
-    self.log_probs_v1 = tf.nn.sigmoid_cross_entropy_with_logits(
-      logits=pred_old_cl, labels=label_old_classes)
-    self.pred_old_cl = pred_old_cl
-    self.label_old_classes = label_old_classes
-    self.pred_new_cl = pred_new_cl
-    self.label_new_classes = label_new_classes
-    self.loss = tf.reduce_mean(tf.concat([self.log_probs, self.log_probs_v1],axis=1))
+     
 
     self.train_preds = tf.argmax(logits, axis=1)
     self.train_preds = tf.to_int32(self.train_preds)
     self.train_acc = tf.equal(self.train_preds, self.y_train)
     self.train_acc = tf.to_int32(self.train_acc)
     self.train_acc = tf.reduce_sum(self.train_acc)
+
+    self.train_preds_v1 = tf.argmax(logits_v1, axis=1)
+    self.train_preds_v1 = tf.to_int32(self.train_preds_v1)
+    self.train_acc_v1 = tf.equal(self.train_preds_v1, self.y_train)
+    self.train_acc_v1 = tf.to_int32(self.train_acc_v1)
+    self.train_acc_v1 = tf.reduce_sum(self.train_acc_v1)
 
     #tf_variables = [var
     #    for var in tf.trainable_variables() if var.name.startswith(self.name)]
@@ -1048,7 +1067,7 @@ class GeneralChildV1(Model):
       print("-" * 80)
       print("Build valid graph")
       with tf.variable_scope("new_class"):
-           logits = self._model(self.x_valid, False, reuse=True)
+           logits = self._model(self.x_valid, False, self.sample_arc, reuse=True)
       self.valid_preds = tf.argmax(logits, axis=1)
       self.valid_preds = tf.to_int32(self.valid_preds)
       self.valid_acc = tf.equal(self.valid_preds, self.y_valid)
@@ -1060,7 +1079,7 @@ class GeneralChildV1(Model):
     print("-" * 80)
     print("Build test graph")
     with tf.variable_scope("new_class"):
-         logits = self._model(self.x_test, False, reuse=True)
+         logits = self._model(self.x_test, False, self.sample_arc, reuse=True)
     self.test_preds = tf.argmax(logits, axis=1)
     self.test_preds = tf.to_int32(self.test_preds)
     self.test_acc = tf.equal(self.test_preds, self.y_test)
@@ -1102,7 +1121,7 @@ class GeneralChildV1(Model):
           _pre_process, x_valid_shuffle, back_prop=False)
 
     with tf.variable_scope("new_class"):
-         logits = self._model(x_valid_shuffle, False, reuse=True)
+         logits = self._model(x_valid_shuffle, False, self.sample_arc, reuse=True)
     valid_shuffle_preds = tf.argmax(logits, axis=1)
     valid_shuffle_preds = tf.to_int32(valid_shuffle_preds)
     self.valid_shuffle_acc = tf.equal(valid_shuffle_preds, y_valid_shuffle)
@@ -1115,6 +1134,8 @@ class GeneralChildV1(Model):
     else:
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
       self.sample_arc = fixed_arc
+      fixed_arc_old = np.array([int(x) for x in self.fixed_arc_old.split(" ") if x])
+      self.sample_arc_old = fixed_arc_old
 
     self._build_train()
     self._build_valid()

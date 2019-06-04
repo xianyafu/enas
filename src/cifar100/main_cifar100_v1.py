@@ -386,8 +386,10 @@ def train(images, labels):
           child_ops["train_op"],
           child_ops["model_size"],
           child_ops["infer_time"],
+          child_ops["y_train"],
+          child_ops["pred"],
         ]
-        loss, lr, gn, tr_acc, _, ms, intm = sess.run(run_ops)
+        loss, lr, gn, tr_acc, _, ms, intm, y_tr, pred = sess.run(run_ops)
         global_step = sess.run(child_ops["global_step"])
  
         if FLAGS.child_sync_replicas:
@@ -410,6 +412,10 @@ def train(images, labels):
           log_string += " mem= "+str(ms)
           log_string += " infer_time="+str(intm)
           print(log_string)
+          #for i in range(0, FLAGS.batch_size):
+          #     pred_list = pred[i].tolist()
+          #     print(y_tr[i]," ", pred_list.index(max(pred_list)))
+
           
         if actual_step % ops["eval_every"] == 0:
           if (FLAGS.controller_training and
@@ -482,6 +488,7 @@ def train(images, labels):
           curr_time = time.time()
           print(float(curr_time-start_time))
 
+        '''
         if epoch == FLAGS.num_epochs:
           images_i = np.zeros((4500+500, 32, 32, 3), dtype=np.float32)
           labels_i = np.zeros((4500+500), dtype=np.int32)
@@ -512,9 +519,15 @@ def train(images, labels):
           images[class_index+1]["train"] = images_i
           labels[class_index+1]["train"] = labels_i
           print(num)
+        '''
+        if epoch == FLAGS.num_epochs:
+           images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
+           labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
         if epoch >= FLAGS.num_epochs:
           break
   tf.reset_default_graph()
+  images_i = None
+  labels_i = None
   return images_i, labels_i
 
 def train_incre(index, images, labels, images_i, labels_i):
@@ -567,14 +580,14 @@ def train_incre(index, images, labels, images_i, labels_i):
           child_ops["train_op"],
           child_ops["model_size"],
           child_ops["infer_time"],
-          #child_ops["y_train"],
-          #child_ops["pred"],
+          child_ops["y_train"],
+          child_ops["pred"],
           #child_ops["label_old_classes"],
           #child_ops["pred_old_cl"],
           #child_ops["label_new_classes"],
           #child_ops["pred_new_cl"]
         ]
-        loss, lr, gn, tr_acc, _, ms, intm = sess.run(run_ops)
+        loss, lr, gn, tr_acc, _, ms, intm, y_tr, pred = sess.run(run_ops)
         global_step = sess.run(child_ops["global_step"])
  
         if FLAGS.child_sync_replicas:
@@ -598,9 +611,9 @@ def train_incre(index, images, labels, images_i, labels_i):
           log_string += " infer_time="+str(intm)
           print(log_string)
           #print(loc, poc, lnc, pnc)
-          #for i in range(0, FLAGS.batch_size):
-          #     pred_list = pred[i].tolist()
-          #     print(y_tr[i]," ", pred_list.index(max(pred_list)))
+          for i in range(0, FLAGS.batch_size):
+               pred_list = pred[i].tolist()
+               print(y_tr[i]," ", pred_list.index(max(pred_list)))
         if actual_step % ops["eval_every"] == 0:
           if (FLAGS.controller_training and
               epoch % FLAGS.controller_train_every == 0):
@@ -671,7 +684,7 @@ def train_incre(index, images, labels, images_i, labels_i):
           ops["eval_func"](sess, "test")
           curr_time = time.time()
           print(float(curr_time-start_time))
-
+        '''
         if epoch == FLAGS.num_epochs*(1+class_index):
           images_i_new = np.zeros((4500+(1+index)*500, 32, 32, 3), dtype=np.float32)
           labels_i_new = np.zeros((4500+(1+index)*500), dtype=np.int32)
@@ -706,9 +719,15 @@ def train_incre(index, images, labels, images_i, labels_i):
           images[class_index+1]["train"] = images_i_new
           labels[class_index+1]["train"] = labels_i_new
           print('num: ',num)
+        '''
+        if epoch == FLAGS.num_epochs:
+           images[class_index+1]["train"] = np.concatenate((images[class_index+1]["train"],images[class_index]["train"]), axis=0)
+           labels[class_index+1]["train"] = np.append(labels[class_index+1]["train"], labels[class_index]["train"])
         if epoch >= FLAGS.num_epochs*(1+class_index):
           break
   tf.reset_default_graph()
+  images_i_new = None
+  labels_i_new = None
   return images_i_new, labels_i_new
 
 def main(_):

@@ -160,9 +160,9 @@ def read_data_by_order(data_path, num_valids=500):
     if num_valids:
       images["valid"] = images["train"][-num_valids:]
       labels["valid"] = labels["train"][-num_valids:]
- 
-      images["train"] = images["train"][:-num_valids]
-      labels["train"] = labels["train"][:-num_valids]
+      
+      images["train"] = images["train"]#[:-num_valids]
+      labels["train"] = labels["train"]#[:-num_valids]
     else:
       images["valid"], labels["valid"] = None, None
  
